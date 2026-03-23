@@ -1360,40 +1360,10 @@
             }
         }, 60000);
 
-        auth.onAuthStateChanged(async user => {
-            if (user) {
-                currentUid = user.uid; docRef = db.collection("shops").doc(currentUid); 
-                document.getElementById('current-user-email').innerText = user.email;
-                document.getElementById('login-status').innerText = "Auto-Syncing with Cloud...";
-                loadLocalData(); 
-                await autoSyncMerge();
-                document.getElementById('login-status').innerText = "Secured. Enter Admin or Staff PIN.";
-            }
+        // Initial App Load
+        window.addEventListener('load', () => {
+            loadLocalData();
         });
-
-        // ACCESS CONTROL LOGIN
-        async function handleLogin() {
-            const passInput = document.getElementById('passInput').value; 
-            const btn = document.getElementById('loginBtn');
-            btn.innerText = "Processing..."; btn.disabled = true; 
-
-            if (currentUid === "local") loadLocalData(); 
-
-            if (passInput === appPass) {
-                userRole = 'admin';
-                document.getElementById('login-screen').style.display = 'none';
-                document.getElementById('main-app').style.display = 'flex';
-                initApp();
-            } else if (settings.staffPin && passInput === settings.staffPin) {
-                userRole = 'staff';
-                document.getElementById('login-screen').style.display = 'none';
-                document.getElementById('main-app').style.display = 'flex';
-                initApp();
-            } else {
-                alert("Access Denied! Incorrect PIN."); 
-                btn.innerText = "Unlock System"; btn.disabled = false; 
-            }
-        }
 
         function lockScreen() {
             session.status = 'inactive';
