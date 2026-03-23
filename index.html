@@ -1231,12 +1231,15 @@
             try {
                 const response = await fetch(url, {
                     method: 'POST',
+                    mode: 'cors',
+                    redirect: 'follow',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                     body: JSON.stringify({ action, payload })
                 });
                 return await response.json();
             } catch (e) {
                 console.error("Auth Error:", e);
-                return { success: false, message: "Connection Error. Please check your internet." };
+                return { success: false, message: "Connection Error. Ensure your Web App is deployed as 'Anyone' and your internet is connected." };
             }
         }
 
@@ -1263,6 +1266,9 @@
             try {
                 const res = await fetch(url, {
                   method: 'POST',
+                  mode: 'cors',
+                  redirect: 'follow',
+                  headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                   body: JSON.stringify({ action, adminPass: settings.backendSecret || appPass, payload })
                 });
                 return await res.json();
