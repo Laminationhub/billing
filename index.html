@@ -340,10 +340,7 @@
                             </select>
                         </div>
 
-                        <div class="form-group">
-                            <label>Sync Auth Secret (Your PIN)</label>
-                            <input type="password" id="set-backend-secret" placeholder="Sync Password">
-                        </div>
+
                         <div class="form-group">
                             <label>Receipt Language</label>
                             <select id="set-lang">
@@ -400,8 +397,7 @@
                     <hr style="margin:25px 0; border:none; border-top:1px solid #eee;">
                     <button class="btn btn-green" onclick="exportData()">⬇️ Export Backup</button>
                     <button class="btn btn-gray" onclick="document.getElementById('importFile').click()">⬆️ Restore Data</button>
-                    <button class="btn btn-blue" onclick="syncWithGoogle('up')" style="float:right; margin-left:10px;">☁️ Push to Sheets</button>
-                    <button class="btn btn-warning" onclick="syncWithGoogle('down')" style="float:right;">☁️ Pull from Sheets</button>
+
                     <input type="file" id="importFile" style="display: none;" onchange="importData(event)">
                 </div>
             </div>
@@ -1270,7 +1266,7 @@
 
         async function syncWithGoogle(direction = 'up') {
             const syncText = document.getElementById('sync-text');
-            if(!BACKEND_URL) return alert("Cloud Backend URL not configured!");
+            if(!BACKEND_URL) return; // Silent if no URL
             
             if(syncText) syncText.innerText = direction === 'up' ? "Pushing..." : "Pulling...";
             
@@ -1278,11 +1274,10 @@
                 const syncBlob = { settings, inventory, sales, expenses, customers, suppliers, quotations, categories };
                 const res = await callCloud("syncUp", { data: syncBlob });
                 if(res.success) {
-                    alert("Sync Up Successful!");
                     if(syncText) syncText.innerText = "Synced";
                 } else {
-                    alert("Sync failed: " + res.message);
-                    if(syncText) syncText.innerText = "Sync Failed";
+                    console.error("Sync Error:", res.message);
+                    if(syncText) syncText.innerText = "Sync Error";
                 }
             } else {
                 const res = await callCloud("syncDown");
@@ -1299,68 +1294,24 @@
                     
                     await saveToStorage();
                     refreshDisplays();
-                    alert("Sync Down Successful!");
                     if(syncText) syncText.innerText = "Synced";
                 } else {
-                    alert("Pull failed: " + res.message);
-                    if(syncText) syncText.innerText = "Sync Failed";
+                    console.error("Sync Error:", res.message);
+                    if(syncText) syncText.innerText = "Sync Error";
                 }
             }
         }
 
-        // FULLY AUTOMATIC CLOUD SYNC & MERGE
-        async function autoSyncMerge() {
-            if (!docRef || window.location.protocol === 'file:') return;
-            
-            try {
-                const doc = await docRef.get();
-                if (doc.exists) {
-                    const c = doc.data();
-                    
-                    const mergeArrays = (localArr, cloudArr) => {
-                        let combined = [...localArr];
-                        if(cloudArr && Array.isArray(cloudArr)) {
-                            cloudArr.forEach(cItem => {
-                                let matchIndex = combined.findIndex(lItem => lItem.id === cItem.id);
-                                if(matchIndex === -1) {
-                                    combined.push(cItem);
-                                } else {
-                                    combined[matchIndex] = cItem;
-                                }
-                            });
-                        }
-                        return combined;
-                    };
-
-                    inventory = mergeArrays(inventory, c.inventory || []);
-                    sales = mergeArrays(sales, c.sales || []);
-                    expenses = mergeArrays(expenses, c.expenses || []);
-                    customers = mergeArrays(customers, c.customers || []);
-                    suppliers = mergeArrays(suppliers, c.suppliers || []);
-                    quotations = mergeArrays(quotations, c.quotations || []);
-                    
-                    let c_cat = c.categories || ["General"];
-                    c_cat.forEach(cat => { if(!categories.includes(cat)) categories.push(cat); });
-
-                    if(c.settings && (!settings.name || settings.name === 'Lamination Hub' || settings.name === 'Billing Hub')) {
-                        settings = c.settings;
-                    }
-                }
-                
-                await saveToStorage(); 
-                refreshDisplays();
-                document.getElementById('last-sync-time').innerText = "Last Sync: " + new Date().toLocaleTimeString();
-                
-            } catch(e) {
-                console.error("Auto Sync Error:", e);
-            }
-        }
-
+        // AUTO-SYNC EVERY 2 MINUTES (PUSH TO CLOUD)
         setInterval(async () => {
-            if (currentUid !== "local" && userRole === 'admin') {
-                await autoSyncMerge();
+            if (session.status === 'active') {
+                await syncWithGoogle('up');
             }
-        }, 60000);
+        }, 120000); 
+
+        // REMAINS OF OLD SYNC (DISABLED)
+        async function autoSyncMerge() {}
+        setInterval(async () => {}, 600000);
 
         // Initial App Load
         window.addEventListener('load', () => {
@@ -1423,7 +1374,7 @@
             
             // Set Print Method
             document.getElementById('set-print-method').value = settings.printMethod || 'browser';
-            document.getElementById('set-backend-secret').value = settings.backendSecret || '';
+
             
             renderTaxDropdown(); 
 
@@ -1798,7 +1749,6 @@
             settings.taxMode = document.getElementById('set-tax-mode').value;
             settings.upiId = document.getElementById('set-upi-id').value.trim(); 
             settings.printMethod = document.getElementById('set-print-method').value;
-            settings.backendSecret = document.getElementById('set-backend-secret').value.trim();
             
             if(tempBase64Img) { 
                 settings.profilePic = tempBase64Img; 
