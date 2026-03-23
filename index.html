@@ -120,42 +120,39 @@
     <div id="activation-screen">
         <div class="activation-box">
             <h1>LAMINATION HUB</h1>
-            <p style="opacity: 0.8;">Software Activation Required</p>
-            <div style="text-align: left; margin-top: 30px;">
-                <label style="font-size: 0.8em; opacity: 0.7;">YOUR DEVICE ID:</label>
-                <div class="device-id-badge" id="display-device-id">LOADING...</div>
-                <p style="font-size: 0.8em; color: #ffeb3b;">Send this Device ID to admin for activation.</p>
+            <p style="opacity: 0.8;" id="activation-msg">Software Activation Required</p>
+            <div style="text-align: center; margin-top: 30px;">
+                <p style="font-size: 0.9em; color: #ffeb3b;">Enter your 10-digit code to unlock the software.</p>
             </div>
             <div class="form-group" style="margin-top: 20px;">
-                <input type="text" id="activationKey" placeholder="Enter Activation Key" style="background: white; border: none; color: black; padding: 15px; border-radius: 10px; width:100%; box-sizing: border-box;">
+                <input type="text" id="activationKey" placeholder="Enter Activation Code" style="background: white; border: none; color: black; padding: 15px; border-radius: 10px; width:100%; box-sizing: border-box; text-align:center; font-size:1.2em; font-weight:bold;">
             </div>
-            <button class="btn btn-blue" style="width: 100%; padding: 15px; background: #4caf50;" onclick="handleActivation()">🚀 Activate Now</button>
-            <p style="margin-top: 15px; font-size: 0.8em; color: #ddd;">Click 'Activate' after adding ID to Google Sheet.</p>
+            <button class="btn btn-blue" id="activationBtn" style="width: 100%; padding: 15px; background: #4caf50;" onclick="handleActivation()">🚀 Activate Now</button>
+            <button class="btn btn-gray" style="width: 100%; padding: 10px; margin-top:15px; background:rgba(0,0,0,0.2); color:white;" onclick="signOut()">🚪 Logout</button>
         </div>
     </div>
 
     <div id="login-screen">
         <div class="login-box">
             <h1 style="color:var(--primary); margin-bottom:0; font-size: 3.5em;">BH</h1>
-            <h2 id="login-title">LOGIN</h2>
+            <h2 style="margin-bottom: 5px;">Billing Hub</h2>
             <p style="color:#888; font-size:0.85em; margin-top:0;">Powered By Lamination Hub</p>
-            
-            <div id="login-fields">
-                <input type="email" id="loginEmail" placeholder="Email Address" style="margin-bottom: 10px;">
-                <input type="password" id="loginPass" placeholder="Password" style="margin-bottom: 20px;" onkeypress="if(event.key==='Enter') handleLogin()">
+            <p style="color:#666; margin-bottom: 20px; margin-top: 15px;" id="login-status">Access your account</p>
+
+            <div id="login-form">
+                <input type="email" id="loginEmail" placeholder="Email Address">
+                <input type="password" id="loginPass" placeholder="Password" onkeypress="if(event.key==='Enter') handleLogin()">
                 <button class="btn btn-blue" id="loginBtn" style="width: 100%; padding: 15px;" onclick="handleLogin()">Unlock System</button>
-                <p style="margin-top: 20px; font-size: 0.9em; color:#666;">Don't have an account? <a href="#" onclick="toggleLoginMode('signup')" style="color: var(--primary); font-weight: bold; text-decoration: none;">Create Account</a></p>
+                <p style="margin-top: 20px; font-size: 0.9em;">New here? <a href="#" onclick="toggleAuth(true)" style="color:var(--primary); font-weight:bold; text-decoration:none;">Register Now</a></p>
             </div>
 
-            <div id="signup-fields" style="display: none;">
-                <input type="text" id="signupShop" placeholder="Shop/Business Name" style="margin-bottom: 15px;">
-                <input type="email" id="signupEmail" placeholder="Email Address" style="margin-bottom: 15px;">
-                <input type="password" id="signupPass" placeholder="Password" style="margin-bottom: 20px;">
-                <button class="btn btn-green" style="width: 100%; padding: 15px;" onclick="handleSignup()">Create Account</button>
-                <p style="margin-top: 20px; font-size: 0.9em; color:#666;">Already have an account? <a href="#" onclick="toggleLoginMode('login')" style="color: var(--primary); font-weight: bold; text-decoration: none;">Log In</a></p>
+            <div id="register-form" style="display:none;">
+                <input type="text" id="regName" placeholder="Full Name">
+                <input type="email" id="regEmail" placeholder="Email Address">
+                <input type="password" id="regPass" placeholder="Password">
+                <button class="btn btn-green" id="regBtn" style="width: 100%; padding: 15px;" onclick="handleRegister()">Create Account</button>
+                <p style="margin-top: 20px; font-size: 0.9em;">Already have an account? <a href="#" onclick="toggleAuth(false)" style="color:var(--primary); font-weight:bold; text-decoration:none;">Login Here</a></p>
             </div>
-            
-            <p id="login-status-msg" style="color: #dc3545; font-size: 0.85em; margin-top: 15px;"></p>
         </div>
     </div>
 
@@ -342,10 +339,7 @@
                                 <option value="rawbt">Mobile Bluetooth (Requires RawBT App)</option>
                             </select>
                         </div>
-                        <div class="form-group">
-                            <label>Google Cloud (Apps Script URL)</label>
-                            <input type="text" id="set-backend-url" placeholder="https://script.google.com/macros/s/.../exec">
-                        </div>
+
                         <div class="form-group">
                             <label>Sync Auth Secret (Your PIN)</label>
                             <input type="password" id="set-backend-secret" placeholder="Sync Password">
@@ -875,7 +869,6 @@
         
         let currentUid = "local"; let docRef = null; let userRole = 'admin';
         let deviceId = ""; let isActivated = false;
-        let currentUser = null;
         let cloudConfig = { url: "", secret: "" };
 
         // DATA STATE
@@ -1136,9 +1129,119 @@
             }
         }
 
-        // SMART DATA LOADER
+        // AUTH & SESSION STATE
+        const BACKEND_URL = "https://script.google.com/macros/s/AKfycbztVe3K00StmnzC2z8gy5CfmtNV0UsTql-9AhtlVamGbYL50J23KczQSzoBjarUA/exec";
+        let session = { userId: null, name: '', email: '', status: 'unauthorized' };
+
+        function loadSession() {
+            const savedSession = localStorage.getItem('l_session');
+            if (savedSession) {
+                session = JSON.parse(savedSession);
+                updateAuthStatus();
+            }
+        }
+
+        function saveSession() {
+            localStorage.setItem('l_session', JSON.stringify(session));
+            updateAuthStatus();
+        }
+
+        function updateAuthStatus() {
+            if (session.status === 'unauthorized') {
+                document.getElementById('login-screen').style.display = 'flex';
+                document.getElementById('activation-screen').style.display = 'none';
+                document.getElementById('main-app').style.display = 'none';
+            } else if (session.status === 'inactive') {
+                document.getElementById('login-screen').style.display = 'none';
+                document.getElementById('activation-screen').style.display = 'flex';
+                document.getElementById('main-app').style.display = 'none';
+                document.getElementById('activation-msg').innerText = `Hello ${session.name}, your account is not activated.`;
+            } else if (session.status === 'active') {
+                document.getElementById('login-screen').style.display = 'none';
+                document.getElementById('activation-screen').style.display = 'none';
+                document.getElementById('main-app').style.display = 'flex';
+                document.getElementById('current-user-email').innerText = session.email;
+                initApp();
+            }
+        }
+
+        function toggleAuth(showRegister) {
+            document.getElementById('login-form').style.display = showRegister ? 'none' : 'block';
+            document.getElementById('register-form').style.display = showRegister ? 'block' : 'none';
+            document.getElementById('auth-title').innerText = showRegister ? 'Create Account' : 'Billing Hub';
+        }
+
+        async function handleLogin() {
+            const email = document.getElementById('loginEmail').value;
+            const pass = document.getElementById('loginPass').value;
+            if (!email || !pass) return alert("Email and Password required");
+
+            const btn = document.getElementById('loginBtn');
+            btn.innerText = "Authenticating..."; btn.disabled = true;
+
+            const res = await callCloudAuth("login", { email, password: pass });
+            if (res.success) {
+                session = { userId: res.userId, name: res.name, email: res.email, status: res.status };
+                saveSession();
+            } else {
+                alert(res.message);
+            }
+            btn.innerText = "Unlock System"; btn.disabled = false;
+        }
+
+        async function handleRegister() {
+            const name = document.getElementById('regName').value;
+            const email = document.getElementById('regEmail').value;
+            const pass = document.getElementById('regPass').value;
+            if (!name || !email || !pass) return alert("All fields required");
+
+            const btn = document.getElementById('regBtn');
+            btn.innerText = "Signing Up..."; btn.disabled = true;
+
+            const res = await callCloudAuth("register", { name, email, password: pass });
+            if (res.success) {
+                alert(res.message);
+                toggleAuth(false);
+            } else {
+                alert(res.message);
+            }
+            btn.innerText = "Create Account"; btn.disabled = false;
+        }
+
+        async function handleActivation() {
+            const code = document.getElementById('activationKey').value;
+            if (!code) return alert("Enter activation code");
+
+            const btn = document.getElementById('activationBtn');
+            btn.innerText = "Verifying..."; btn.disabled = true;
+
+            const res = await callCloudAuth("activate", { userId: session.userId, code });
+            if (res.success) {
+                alert(res.message);
+                session.status = 'active';
+                saveSession();
+            } else {
+                alert(res.message);
+            }
+            btn.innerText = "🚀 Activate Now"; btn.disabled = false;
+        }
+
+        async function callCloudAuth(action, payload) {
+            const url = BACKEND_URL;
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    body: JSON.stringify({ action, payload })
+                });
+                return await response.json();
+            } catch (e) {
+                console.error("Auth Error:", e);
+                return { success: false, message: "Connection Error. Please check your internet." };
+            }
+        }
+
         function loadLocalData() {
-            appPass = '1234'; settings = { name: 'Billing Hub', city: 'Kurebhar', address: '', gst: '', phone: '', email: '', profilePic: '', staffPin: '', printerSize: 'A4', receiptLanguage: 'EN', taxRate: 0, taxMode: 'EXCLUSIVE', customTaxRates: [], upiId: '', printMethod: 'browser', backendUrl: '', backendSecret: '' };
+            appPass = '1234'; settings = { name: 'Billing Hub', city: 'Kurebhar', address: '', gst: '', phone: '', email: '', profilePic: '', staffPin: '', printerSize: 'A4', receiptLanguage: 'EN', taxRate: 0, taxMode: 'EXCLUSIVE', customTaxRates: [], upiId: '', printMethod: 'browser', backendSecret: '1234' };
             inventory = []; sales = []; expenses = []; customers = [{id:1, name:'Walk-in', phone:'--', spent:0, due:0, points:0}];
             suppliers = []; quotations = []; categories = ["General"];
             
@@ -1152,55 +1255,26 @@
             try { if(localStorage.getItem('l_quote')) quotations = JSON.parse(localStorage.getItem('l_quote')); } catch(e){}
             try { if(localStorage.getItem('l_cat')) categories = JSON.parse(localStorage.getItem('l_cat')); } catch(e){}
 
-            // Device Identification
-            deviceId = localStorage.getItem('l_deviceId');
-            if(!deviceId) {
-                deviceId = 'BH-' + Math.random().toString(36).substr(2, 9).toUpperCase();
-                localStorage.setItem('l_deviceId', deviceId);
-            }
-            document.getElementById('display-device-id').innerText = deviceId;
-
-            // User session
-            let savedUser = localStorage.getItem('l_user');
-            if(savedUser) {
-                currentUser = JSON.parse(savedUser);
-                document.getElementById('current-user-email').innerText = currentUser.email;
-                document.getElementById('loginEmail').value = currentUser.email;
-            }
-
-            checkActivationStatus();
+            loadSession();
         }
 
         async function callCloud(action, payload = {}) {
-            const url = settings.backendUrl;
-            if(!url) return { success: false, message: "No Cloud URL configured" };
-            
+            const url = BACKEND_URL;
             try {
-                const response = await fetch(url, {
-                    method: 'POST',
-                    body: JSON.stringify({ action, deviceId, email: currentUser?.email, password: localStorage.getItem('l_userPass'), payload })
+                const res = await fetch(url, {
+                  method: 'POST',
+                  body: JSON.stringify({ action, adminPass: settings.backendSecret || appPass, payload })
                 });
-                return await response.json();
+                return await res.json();
             } catch(e) {
                 console.error("Cloud Call Error:", e);
-                return { success: false, message: "Connection Error. Check URL/Network." };
+                return { success: false, message: "Connection Error. Check Network." };
             }
         }
 
         async function checkActivationStatus() {
-            if(!settings.backendUrl) {
-                isActivated = true; // Fallback if no cloud configured
-                return;
-            }
-            
-            const res = await callCloud("checkActivation");
-            if(res.success && res.activated) {
-                isActivated = true;
-                document.getElementById('activation-screen').style.display = 'none';
-            } else {
-                isActivated = false;
-                document.getElementById('activation-screen').style.display = 'flex';
-            }
+            // Activation is now handled by the session system.
+            return;
         }
 
         async function handleActivation() {
@@ -1325,92 +1399,39 @@
             }
         });
 
-        // ACCESS CONTROL LOGIN & SIGNUP
-        function toggleLoginMode(mode) {
-            const login = document.getElementById('login-fields');
-            const signup = document.getElementById('signup-fields');
-            const title = document.getElementById('login-title');
-            const msg = document.getElementById('login-status-msg');
-            
-            msg.innerText = "";
-            if(mode === 'signup') {
-                login.style.display = 'none';
-                signup.style.display = 'block';
-                title.innerText = "CREATE ACCOUNT";
-            } else {
-                login.style.display = 'block';
-                signup.style.display = 'none';
-                title.innerText = "LOGIN";
-            }
-        }
-
-        async function handleSignup() {
-            const shopName = document.getElementById('signupShop').value.trim();
-            const email = document.getElementById('signupEmail').value.trim();
-            const password = document.getElementById('signupPass').value.trim();
-            const msg = document.getElementById('login-status-msg');
-
-            if(!shopName || !email || !password) return alert("Fill all fields");
-            
-            msg.style.color = "blue"; msg.innerText = "Creating Account...";
-            
-            const res = await callCloud("signup", { email, password, shopName });
-            if(res.success) {
-                alert(res.message);
-                toggleLoginMode('login');
-                document.getElementById('loginEmail').value = email;
-            } else {
-                msg.style.color = "red"; msg.innerText = res.message;
-            }
-        }
-
+        // ACCESS CONTROL LOGIN
         async function handleLogin() {
-            const email = document.getElementById('loginEmail').value.trim();
-            const password = document.getElementById('loginPass').value.trim();
-            const msg = document.getElementById('login-status-msg');
+            const passInput = document.getElementById('passInput').value; 
             const btn = document.getElementById('loginBtn');
+            btn.innerText = "Processing..."; btn.disabled = true; 
 
-            if(!email || !password) return alert("Enter email and password");
-            
-            btn.innerText = "Authenticating..."; btn.disabled = true;
-            msg.style.color = "blue"; msg.innerText = "Checking Credentials...";
+            if (currentUid === "local") loadLocalData(); 
 
-            const res = await callCloud("loginUser", { email, password });
-            if(res.success) {
-                currentUser = res.user;
-                localStorage.setItem('l_user', JSON.stringify(currentUser));
-                localStorage.setItem('l_userPass', password); // Store for sync auth
-                
-                settings.backendSecret = password; // Set sync secret to match password
-                
+            if (passInput === appPass) {
+                userRole = 'admin';
                 document.getElementById('login-screen').style.display = 'none';
                 document.getElementById('main-app').style.display = 'flex';
-                
-                document.getElementById('current-user-email').innerText = email;
-                if(currentUser.shopName) {
-                    settings.name = currentUser.shopName;
-                    document.getElementById('brand-name').innerText = currentUser.shopName;
-                }
-                
                 initApp();
-                syncWithGoogle('down'); // Pull cloud data on login
+            } else if (settings.staffPin && passInput === settings.staffPin) {
+                userRole = 'staff';
+                document.getElementById('login-screen').style.display = 'none';
+                document.getElementById('main-app').style.display = 'flex';
+                initApp();
             } else {
-                msg.style.color = "red"; msg.innerText = res.message || "Invalid credentials";
-                btn.innerText = "Unlock System"; btn.disabled = false;
+                alert("Access Denied! Incorrect PIN."); 
+                btn.innerText = "Unlock System"; btn.disabled = false; 
             }
         }
 
         function lockScreen() {
-            document.getElementById('login-screen').style.display = 'flex';
-            document.getElementById('main-app').style.display = 'none';
-            document.getElementById('loginPass').value = '';
-            document.getElementById('login-status-msg').style.color = "green";
-            document.getElementById('login-status-msg').innerText = "System Locked. Enter Password to return.";
-            document.getElementById('loginBtn').innerText = "Unlock System";
-            document.getElementById('loginBtn').disabled = false;
+            session.status = 'inactive';
+            updateAuthStatus();
         }
 
-        function signOut() { auth.signOut().then(() => { location.reload(); }); }
+        function signOut() { 
+            localStorage.removeItem('l_session');
+            location.reload(); 
+        }
 
         async function saveToStorage() {
             const syncText = document.getElementById('sync-text'); if(syncText) { syncText.innerText = "Saving..."; syncText.style.color = "#ffc107"; }
@@ -1458,7 +1479,6 @@
             
             // Set Print Method
             document.getElementById('set-print-method').value = settings.printMethod || 'browser';
-            document.getElementById('set-backend-url').value = settings.backendUrl || '';
             document.getElementById('set-backend-secret').value = settings.backendSecret || '';
             
             renderTaxDropdown(); 
@@ -1834,7 +1854,6 @@
             settings.taxMode = document.getElementById('set-tax-mode').value;
             settings.upiId = document.getElementById('set-upi-id').value.trim(); 
             settings.printMethod = document.getElementById('set-print-method').value;
-            settings.backendUrl = document.getElementById('set-backend-url').value.trim();
             settings.backendSecret = document.getElementById('set-backend-secret').value.trim();
             
             if(tempBase64Img) { 
