@@ -137,12 +137,25 @@
     <div id="login-screen">
         <div class="login-box">
             <h1 style="color:var(--primary); margin-bottom:0; font-size: 3.5em;">BH</h1>
-            <h2 style="margin-bottom: 5px;">Billing Hub</h2>
+            <h2 id="login-title">LOGIN</h2>
             <p style="color:#888; font-size:0.85em; margin-top:0;">Powered By Lamination Hub</p>
-            <p style="color:#666; margin-bottom: 20px; margin-top: 15px;" id="login-status">Enter Admin or Staff PIN</p>
+            
+            <div id="login-fields">
+                <input type="email" id="loginEmail" placeholder="Email Address" style="margin-bottom: 10px;">
+                <input type="password" id="loginPass" placeholder="Password" style="margin-bottom: 20px;" onkeypress="if(event.key==='Enter') handleLogin()">
+                <button class="btn btn-blue" id="loginBtn" style="width: 100%; padding: 15px;" onclick="handleLogin()">Unlock System</button>
+                <p style="margin-top: 20px; font-size: 0.9em; color:#666;">Don't have an account? <a href="#" onclick="toggleLoginMode('signup')" style="color: var(--primary); font-weight: bold; text-decoration: none;">Create Account</a></p>
+            </div>
 
-            <input type="password" id="passInput" placeholder="Enter Admin or Staff PIN" onkeypress="if(event.key==='Enter') handleLogin()">
-            <button class="btn btn-blue" id="loginBtn" style="width: 100%; padding: 15px;" onclick="handleLogin()">Unlock System</button>
+            <div id="signup-fields" style="display: none;">
+                <input type="text" id="signupShop" placeholder="Shop/Business Name" style="margin-bottom: 15px;">
+                <input type="email" id="signupEmail" placeholder="Email Address" style="margin-bottom: 15px;">
+                <input type="password" id="signupPass" placeholder="Password" style="margin-bottom: 20px;">
+                <button class="btn btn-green" style="width: 100%; padding: 15px;" onclick="handleSignup()">Create Account</button>
+                <p style="margin-top: 20px; font-size: 0.9em; color:#666;">Already have an account? <a href="#" onclick="toggleLoginMode('login')" style="color: var(--primary); font-weight: bold; text-decoration: none;">Log In</a></p>
+            </div>
+            
+            <p id="login-status-msg" style="color: #dc3545; font-size: 0.85em; margin-top: 15px;"></p>
         </div>
     </div>
 
@@ -862,6 +875,7 @@
         
         let currentUid = "local"; let docRef = null; let userRole = 'admin';
         let deviceId = ""; let isActivated = false;
+        let currentUser = null;
         let cloudConfig = { url: "", secret: "" };
 
         // DATA STATE
@@ -1145,6 +1159,15 @@
                 localStorage.setItem('l_deviceId', deviceId);
             }
             document.getElementById('display-device-id').innerText = deviceId;
+
+            // User session
+            let savedUser = localStorage.getItem('l_user');
+            if(savedUser) {
+                currentUser = JSON.parse(savedUser);
+                document.getElementById('current-user-email').innerText = currentUser.email;
+                document.getElementById('loginEmail').value = currentUser.email;
+            }
+
             checkActivationStatus();
         }
 
@@ -1155,19 +1178,9 @@
             try {
                 const response = await fetch(url, {
                     method: 'POST',
-                    mode: 'no-cors', // Apps Script requires no-cors sometimes, but we actually need the data
-                    // If no-cors is used, we can't see the response. 
-                    // Better to use a proxy or handle the standard redirect.
-                    body: JSON.stringify({ action, deviceId, adminPass: settings.backendSecret || appPass, payload })
+                    body: JSON.stringify({ action, deviceId, email: currentUser?.email, password: localStorage.getItem('l_userPass'), payload })
                 });
-                
-                // Standard Apps Script behavior: returns 302 then 200. Fetch handles this.
-                // However, CORS can be an issue. If so, instructions will be provided.
-                const res = await fetch(url, {
-                  method: 'POST',
-                  body: JSON.stringify({ action, deviceId, adminPass: settings.backendSecret || appPass, payload })
-                });
-                return await res.json();
+                return await response.json();
             } catch(e) {
                 console.error("Cloud Call Error:", e);
                 return { success: false, message: "Connection Error. Check URL/Network." };
@@ -1312,35 +1325,87 @@
             }
         });
 
-        // ACCESS CONTROL LOGIN
-        async function handleLogin() {
-            const passInput = document.getElementById('passInput').value; 
-            const btn = document.getElementById('loginBtn');
-            btn.innerText = "Processing..."; btn.disabled = true; 
-
-            if (currentUid === "local") loadLocalData(); 
-
-            if (passInput === appPass) {
-                userRole = 'admin';
-                document.getElementById('login-screen').style.display = 'none';
-                document.getElementById('main-app').style.display = 'flex';
-                initApp();
-            } else if (settings.staffPin && passInput === settings.staffPin) {
-                userRole = 'staff';
-                document.getElementById('login-screen').style.display = 'none';
-                document.getElementById('main-app').style.display = 'flex';
-                initApp();
+        // ACCESS CONTROL LOGIN & SIGNUP
+        function toggleLoginMode(mode) {
+            const login = document.getElementById('login-fields');
+            const signup = document.getElementById('signup-fields');
+            const title = document.getElementById('login-title');
+            const msg = document.getElementById('login-status-msg');
+            
+            msg.innerText = "";
+            if(mode === 'signup') {
+                login.style.display = 'none';
+                signup.style.display = 'block';
+                title.innerText = "CREATE ACCOUNT";
             } else {
-                alert("Access Denied! Incorrect PIN."); 
-                btn.innerText = "Unlock System"; btn.disabled = false; 
+                login.style.display = 'block';
+                signup.style.display = 'none';
+                title.innerText = "LOGIN";
+            }
+        }
+
+        async function handleSignup() {
+            const shopName = document.getElementById('signupShop').value.trim();
+            const email = document.getElementById('signupEmail').value.trim();
+            const password = document.getElementById('signupPass').value.trim();
+            const msg = document.getElementById('login-status-msg');
+
+            if(!shopName || !email || !password) return alert("Fill all fields");
+            
+            msg.style.color = "blue"; msg.innerText = "Creating Account...";
+            
+            const res = await callCloud("signup", { email, password, shopName });
+            if(res.success) {
+                alert(res.message);
+                toggleLoginMode('login');
+                document.getElementById('loginEmail').value = email;
+            } else {
+                msg.style.color = "red"; msg.innerText = res.message;
+            }
+        }
+
+        async function handleLogin() {
+            const email = document.getElementById('loginEmail').value.trim();
+            const password = document.getElementById('loginPass').value.trim();
+            const msg = document.getElementById('login-status-msg');
+            const btn = document.getElementById('loginBtn');
+
+            if(!email || !password) return alert("Enter email and password");
+            
+            btn.innerText = "Authenticating..."; btn.disabled = true;
+            msg.style.color = "blue"; msg.innerText = "Checking Credentials...";
+
+            const res = await callCloud("loginUser", { email, password });
+            if(res.success) {
+                currentUser = res.user;
+                localStorage.setItem('l_user', JSON.stringify(currentUser));
+                localStorage.setItem('l_userPass', password); // Store for sync auth
+                
+                settings.backendSecret = password; // Set sync secret to match password
+                
+                document.getElementById('login-screen').style.display = 'none';
+                document.getElementById('main-app').style.display = 'flex';
+                
+                document.getElementById('current-user-email').innerText = email;
+                if(currentUser.shopName) {
+                    settings.name = currentUser.shopName;
+                    document.getElementById('brand-name').innerText = currentUser.shopName;
+                }
+                
+                initApp();
+                syncWithGoogle('down'); // Pull cloud data on login
+            } else {
+                msg.style.color = "red"; msg.innerText = res.message || "Invalid credentials";
+                btn.innerText = "Unlock System"; btn.disabled = false;
             }
         }
 
         function lockScreen() {
             document.getElementById('login-screen').style.display = 'flex';
             document.getElementById('main-app').style.display = 'none';
-            document.getElementById('passInput').value = '';
-            document.getElementById('login-status').innerText = "System Locked. Enter PIN to return.";
+            document.getElementById('loginPass').value = '';
+            document.getElementById('login-status-msg').style.color = "green";
+            document.getElementById('login-status-msg').innerText = "System Locked. Enter Password to return.";
             document.getElementById('loginBtn').innerText = "Unlock System";
             document.getElementById('loginBtn').disabled = false;
         }
