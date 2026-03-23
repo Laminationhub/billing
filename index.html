@@ -867,9 +867,10 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore(); const auth = firebase.auth(); 
         
-        let currentUid = "local"; let docRef = null; let userRole = 'admin';
-        let deviceId = ""; let isActivated = false;
-        let cloudConfig = { url: "", secret: "" };
+        let session = { userId: null, name: '', email: '', status: 'unauthorized' };
+        let userRole = 'admin'; // For UI permissions
+        let docRef = null; // For cloud sync
+        let currentUid = "local"; // For legacy sync compatibility
 
         // DATA STATE
         let appPass = '1234';
@@ -1129,25 +1130,43 @@
             }
         }
 
-        // AUTH & SESSION STATE
+        // CLOUD SYSTEM
         const BACKEND_URL = "https://script.google.com/macros/s/AKfycbztVe3K00StmnzC2z8gy5CfmtNV0UsTql-9AhtlVamGbYL50J23KczQSzoBjarUAxcJdQ/exec";
-        let session = { userId: null, name: '', email: '', status: 'unauthorized' };
-
-        function loadSession() {
-            const savedSession = localStorage.getItem('l_session');
-            if (savedSession) {
-                session = JSON.parse(savedSession);
-                updateAuthStatus();
+        
+        async function callCloudAuth(action, payload) {
+            try {
+                const response = await fetch(BACKEND_URL, {
+                    method: 'POST',
+                    mode: 'cors',
+                    redirect: 'follow',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ action, payload })
+                });
+                return await response.json();
+            } catch (e) {
+                console.error("Auth Error:", e);
+                return { success: false, message: "Connection Error. Ensure your Web App is deployed as 'Anyone' and your internet is connected." };
             }
         }
 
-        function saveSession() {
-            localStorage.setItem('l_session', JSON.stringify(session));
-            updateAuthStatus();
+        async function callCloud(action, payload = {}) {
+            try {
+                const res = await fetch(BACKEND_URL, {
+                  method: 'POST',
+                  mode: 'cors',
+                  redirect: 'follow',
+                  headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                  body: JSON.stringify({ action, adminPass: settings.backendSecret || appPass, payload })
+                });
+                return await res.json();
+            } catch(e) {
+                console.error("Cloud Call Error:", e);
+                return { success: false, message: "Connection Error. Check Network." };
+            }
         }
 
         function updateAuthStatus() {
-            if (session.status === 'unauthorized') {
+            if (!session || session.status === 'unauthorized') {
                 document.getElementById('login-screen').style.display = 'flex';
                 document.getElementById('activation-screen').style.display = 'none';
                 document.getElementById('main-app').style.display = 'none';
@@ -1160,9 +1179,14 @@
                 document.getElementById('login-screen').style.display = 'none';
                 document.getElementById('activation-screen').style.display = 'none';
                 document.getElementById('main-app').style.display = 'flex';
-                document.getElementById('current-user-email').innerText = session.email;
-                initApp();
+                document.getElementById('current-user-email').innerText = (session && session.email) ? session.email : "Shared";
+                if(typeof initApp === "function") initApp();
             }
+        }
+
+        function saveSession() {
+            localStorage.setItem('l_session', JSON.stringify(session));
+            updateAuthStatus();
         }
 
         function toggleAuth(showRegister) {
@@ -1175,10 +1199,8 @@
             const email = document.getElementById('loginEmail').value;
             const pass = document.getElementById('loginPass').value;
             if (!email || !pass) return alert("Email and Password required");
-
             const btn = document.getElementById('loginBtn');
-            btn.innerText = "Authenticating..."; btn.disabled = true;
-
+            btn.innerText = "Verifying..."; btn.disabled = true;
             const res = await callCloudAuth("login", { email, password: pass });
             if (res.success) {
                 session = { userId: res.userId, name: res.name, email: res.email, status: res.status };
@@ -1194,10 +1216,8 @@
             const email = document.getElementById('regEmail').value;
             const pass = document.getElementById('regPass').value;
             if (!name || !email || !pass) return alert("All fields required");
-
             const btn = document.getElementById('regBtn');
             btn.innerText = "Signing Up..."; btn.disabled = true;
-
             const res = await callCloudAuth("register", { name, email, password: pass });
             if (res.success) {
                 alert(res.message);
@@ -1211,10 +1231,8 @@
         async function handleActivation() {
             const code = document.getElementById('activationKey').value;
             if (!code) return alert("Enter activation code");
-
             const btn = document.getElementById('activationBtn');
-            btn.innerText = "Verifying..."; btn.disabled = true;
-
+            btn.innerText = "Activating..."; btn.disabled = true;
             const res = await callCloudAuth("activate", { userId: session.userId, code });
             if (res.success) {
                 alert(res.message);
@@ -1226,28 +1244,16 @@
             btn.innerText = "🚀 Activate Now"; btn.disabled = false;
         }
 
-        async function callCloudAuth(action, payload) {
-            const url = BACKEND_URL;
-            try {
-                const response = await fetch(url, {
-                    method: 'POST',
-                    mode: 'cors',
-                    redirect: 'follow',
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    body: JSON.stringify({ action, payload })
-                });
-                return await response.json();
-            } catch (e) {
-                console.error("Auth Error:", e);
-                return { success: false, message: "Connection Error. Ensure your Web App is deployed as 'Anyone' and your internet is connected." };
-            }
+        function loadSession() {
+            const savedSession = localStorage.getItem('l_session');
+            if (savedSession) session = JSON.parse(savedSession);
+            updateAuthStatus();
         }
 
         function loadLocalData() {
             appPass = '1234'; settings = { name: 'Billing Hub', city: 'Kurebhar', address: '', gst: '', phone: '', email: '', profilePic: '', staffPin: '', printerSize: 'A4', receiptLanguage: 'EN', taxRate: 0, taxMode: 'EXCLUSIVE', customTaxRates: [], upiId: '', printMethod: 'browser', backendSecret: '1234' };
             inventory = []; sales = []; expenses = []; customers = [{id:1, name:'Walk-in', phone:'--', spent:0, due:0, points:0}];
             suppliers = []; quotations = []; categories = ["General"];
-            
             try { if(localStorage.getItem('l_pass')) appPass = localStorage.getItem('l_pass'); } catch(e){}
             try { if(localStorage.getItem('l_settings')) settings = JSON.parse(localStorage.getItem('l_settings')); } catch(e){}
             try { if(localStorage.getItem('l_inv')) inventory = JSON.parse(localStorage.getItem('l_inv')); } catch(e){}
@@ -1257,52 +1263,12 @@
             try { if(localStorage.getItem('l_sup')) suppliers = JSON.parse(localStorage.getItem('l_sup')); } catch(e){}
             try { if(localStorage.getItem('l_quote')) quotations = JSON.parse(localStorage.getItem('l_quote')); } catch(e){}
             try { if(localStorage.getItem('l_cat')) categories = JSON.parse(localStorage.getItem('l_cat')); } catch(e){}
-
             loadSession();
-        }
-
-        async function callCloud(action, payload = {}) {
-            const url = BACKEND_URL;
-            try {
-                const res = await fetch(url, {
-                  method: 'POST',
-                  mode: 'cors',
-                  redirect: 'follow',
-                  headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                  body: JSON.stringify({ action, adminPass: settings.backendSecret || appPass, payload })
-                });
-                return await res.json();
-            } catch(e) {
-                console.error("Cloud Call Error:", e);
-                return { success: false, message: "Connection Error. Check Network." };
-            }
-        }
-
-        async function checkActivationStatus() {
-            // Activation is now handled by the session system.
-            return;
-        }
-
-        async function handleActivation() {
-            const key = document.getElementById('activationKey').value;
-            if(!key) return alert("Enter activation key");
-            
-            const btn = document.querySelector('#activation-screen button');
-            btn.innerText = "Activating..."; btn.disabled = true;
-
-            const res = await callCloud("activate", { activationKey: key });
-            if(res.success) {
-                alert(res.message);
-                checkActivationStatus();
-            } else {
-                alert(res.message || "Activation Failed");
-            }
-            btn.innerText = "🚀 Activate Now"; btn.disabled = false;
         }
 
         async function syncWithGoogle(direction = 'up') {
             const syncText = document.getElementById('sync-text');
-            if(!settings.backendUrl) return alert("Configure Google Cloud URL in Settings first!");
+            if(!BACKEND_URL) return alert("Cloud Backend URL not configured!");
             
             if(syncText) syncText.innerText = direction === 'up' ? "Pushing..." : "Pulling...";
             
