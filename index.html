@@ -863,14 +863,18 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore(); const auth = firebase.auth(); 
         
-        let session = { userId: null, name: '', email: '', status: 'unauthorized' };
-        let userRole = 'admin'; // For UI permissions
-        let docRef = null; // For cloud sync
-        let currentUid = "local"; // For legacy sync compatibility
+        // Session Management (Immediate load to prevent logout on refresh)
+        let savedSession = null;
+        try { savedSession = localStorage.getItem('l_session'); } catch(e) {}
+        let session = savedSession ? JSON.parse(savedSession) : { userId: null, name: '', email: '', status: 'unauthorized' };
+
+        let userRole = 'admin'; 
+        let docRef = null; 
+        let currentUid = "local"; 
 
         // DATA STATE
         let appPass = '1234';
-        let settings = { name: 'Billing Hub', city: 'Kurebhar', address: '', gst: '', phone: '', email: '', profilePic: '', staffPin: '', printerSize: 'A4', receiptLanguage: 'EN', taxRate: 0, taxMode: 'EXCLUSIVE', customTaxRates: [], upiId: '', printMethod: 'browser', backendUrl: 'https://script.google.com/macros/s/AKfycbzAH7ILOASpgPm4KBFcFbdPbgcJPPpc_0SbZ9KwnNkysU_-opxWVwE1xynnEmmH6iJ81w/exec', backendSecret: '1234' };
+        let settings = { name: 'Billing Hub', city: 'Kurebhar', address: '', gst: '', phone: '', email: '', profilePic: '', staffPin: '', printerSize: 'A4', receiptLanguage: 'EN', taxRate: 0, taxMode: 'EXCLUSIVE', customTaxRates: [], upiId: '', printMethod: 'browser' };
         let inventory = []; let sales = []; let expenses = []; let customers = [{id:1, name:'Walk-in', phone:'--', spent:0, due:0, points:0}];
         let suppliers = []; let quotations = []; let categories = ["General"]; 
         let cart = []; let custTrigger = "list"; let tempBase64Img = ""; let editingProductId = null;
@@ -1249,18 +1253,17 @@
         }
 
         function loadLocalData() {
-            appPass = '1234'; settings = { name: 'Billing Hub', city: 'Kurebhar', address: '', gst: '', phone: '', email: '', profilePic: '', staffPin: '', printerSize: 'A4', receiptLanguage: 'EN', taxRate: 0, taxMode: 'EXCLUSIVE', customTaxRates: [], upiId: '', printMethod: 'browser', backendSecret: '1234' };
-            inventory = []; sales = []; expenses = []; customers = [{id:1, name:'Walk-in', phone:'--', spent:0, due:0, points:0}];
-            suppliers = []; quotations = []; categories = ["General"];
-            try { if(localStorage.getItem('l_pass')) appPass = localStorage.getItem('l_pass'); } catch(e){}
-            try { if(localStorage.getItem('l_settings')) settings = JSON.parse(localStorage.getItem('l_settings')); } catch(e){}
-            try { if(localStorage.getItem('l_inv')) inventory = JSON.parse(localStorage.getItem('l_inv')); } catch(e){}
-            try { if(localStorage.getItem('l_sales')) sales = JSON.parse(localStorage.getItem('l_sales')); } catch(e){}
-            try { if(localStorage.getItem('l_exp')) expenses = JSON.parse(localStorage.getItem('l_exp')); } catch(e){}
-            try { if(localStorage.getItem('l_cust')) customers = JSON.parse(localStorage.getItem('l_cust')); } catch(e){}
-            try { if(localStorage.getItem('l_sup')) suppliers = JSON.parse(localStorage.getItem('l_sup')); } catch(e){}
-            try { if(localStorage.getItem('l_quote')) quotations = JSON.parse(localStorage.getItem('l_quote')); } catch(e){}
-            try { if(localStorage.getItem('l_cat')) categories = JSON.parse(localStorage.getItem('l_cat')); } catch(e){}
+            try { 
+                if(localStorage.getItem('l_pass')) appPass = localStorage.getItem('l_pass');
+                if(localStorage.getItem('l_settings')) settings = JSON.parse(localStorage.getItem('l_settings'));
+                if(localStorage.getItem('l_inv')) inventory = JSON.parse(localStorage.getItem('l_inv'));
+                if(localStorage.getItem('l_sales')) sales = JSON.parse(localStorage.getItem('l_sales'));
+                if(localStorage.getItem('l_exp')) expenses = JSON.parse(localStorage.getItem('l_exp'));
+                if(localStorage.getItem('l_cust')) customers = JSON.parse(localStorage.getItem('l_cust'));
+                if(localStorage.getItem('l_sup')) suppliers = JSON.parse(localStorage.getItem('l_sup'));
+                if(localStorage.getItem('l_quote')) quotations = JSON.parse(localStorage.getItem('l_quote'));
+                if(localStorage.getItem('l_cat')) categories = JSON.parse(localStorage.getItem('l_cat'));
+            } catch(e){ console.warn("Local Data Load Error"); }
             loadSession();
         }
 
@@ -1341,15 +1344,8 @@
             localStorage.setItem('l_quote', JSON.stringify(quotations));
             localStorage.setItem('l_cat', JSON.stringify(categories));
             
-            if (currentUid !== "local" && docRef) {
-                try { 
-                    if (window.location.protocol !== 'file:') { 
-                        await docRef.set({ appPass, settings, inventory, sales, expenses, customers, suppliers, quotations, categories }); 
-                        if(syncText) { syncText.innerText = "Synced"; syncText.style.color = "#28a745"; document.getElementById('last-sync-time').innerText = "Last push: " + new Date().toLocaleTimeString(); } 
-                    } 
-                } catch(e) { if(syncText) { syncText.innerText = "Offline (Local Saved)"; syncText.style.color = "#dc3545"; } }
-            } else if (settings.backendUrl) {
-                // Background Cloud Sync if backend configured
+            if (session && session.status === 'active' && BACKEND_URL) {
+                // Background Cloud Sync
                 syncWithGoogle('up');
             } else {
                 if(syncText) { syncText.innerText = "Local Mode Saved"; syncText.style.color = "#6c757d"; }
@@ -2379,7 +2375,36 @@
         function deleteItem(t, id) { if(confirm("Confirm deletion?")) { if(t==='inv') inventory = inventory.filter(i=>i.id!==id); if(t==='exp') expenses = expenses.filter(i=>i.id!==id); if(t==='cust') customers = customers.filter(c=>c.id!==id); if(t==='sup') suppliers = suppliers.filter(s=>s.id!==id); if(t==='quote') quotations = quotations.filter(q=>q.id!==id); refreshDisplays(); } }
         function filterCustomerDropdown() { const q = document.getElementById('custSearchInput').value.toLowerCase(); document.getElementById('posCustomerSelect').innerHTML = customers.filter(c => c.name.toLowerCase().includes(q) || c.phone.includes(q)).map(c => `<option value="${c.id}">${c.name}</option>`).join(''); }
         function exportData() { const b = new Blob([JSON.stringify({pass:appPass, settings, inventory, sales, expenses, customers, suppliers, quotations, categories})], {type:'application/json'}); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download=`Backup.json`; a.click(); }
-        async function importData(e) { const r = new FileReader(); r.onload = async function(ev) { try { const d = JSON.parse(ev.target.result); appPass = d.pass || appPass; settings = d.settings || settings; inventory = d.inventory || []; sales = d.sales || []; expenses = d.expenses || []; customers = d.customers || [{id:1, name:'Walk-in', phone:'--', spent:0, due:0, points:0}]; suppliers = d.suppliers || []; quotations = d.quotations || []; categories = d.categories || ["General"]; await saveToStorage(); alert("Restored Successfully!"); location.reload(); } catch (error) { alert("Error: Invalid File"); } }; r.readAsText(e.target.files[0]); }
+        async function importData(e) { 
+            const r = new FileReader(); 
+            r.onload = async function(ev) { 
+                try { 
+                    const d = JSON.parse(ev.target.result); 
+                    appPass = d.pass || appPass; 
+                    settings = d.settings || settings; 
+                    inventory = d.inventory || []; 
+                    sales = d.sales || []; 
+                    expenses = d.expenses || []; 
+                    customers = d.customers || [{id:1, name:'Walk-in', phone:'--', spent:0, due:0, points:0}]; 
+                    suppliers = d.suppliers || []; 
+                    quotations = d.quotations || []; 
+                    categories = d.categories || ["General"]; 
+                    
+                    await saveToStorage(); 
+
+                    // Immediately push restored data to cloud
+                    if (session && session.status === 'active') {
+                        await syncWithGoogle('up');
+                    }
+                    
+                    alert("Restored and Synced Successfully!"); 
+                    location.reload(); 
+                } catch (error) { 
+                    alert("Error: Invalid File"); 
+                } 
+            }; 
+            r.readAsText(e.target.files[0]); 
+        }
         
         function printBarcodeLabel(id) { 
             const p = inventory.find(x => x.id === id); 
